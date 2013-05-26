@@ -8,7 +8,6 @@
 module EnglishGen where
 import Test.QuickCheck
 import Control.Monad
-import Data.List
 
 data Object
     = Nil -- ^ nil Object
