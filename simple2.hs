@@ -10,25 +10,15 @@ module EnglishGen where
 import Test.QuickCheck
 import Control.Monad
 
+-- | Concatenate strings.
+cat "" "" = ""
+cat x "" = x
+cat "" y = y
+cat x y = x ++ " " ++ y
+
 -- | Combine two Gen String.
 (.+) :: Gen String -> Gen String -> Gen String
-a .+ b =
-    do
-      s1 <- a
-      s2 <- b
-      if s1 == "" && s2 == ""
-      then
-          return ""
-      else
-          if s1 /= "" && s2 == ""
-          then
-              return s1
-          else
-              if s1 == "" && s2 /= ""
-              then
-                  return s2
-              else
-                  return $ s1 ++ " " ++ s2
+a .+ b = liftM2 cat a b
 
 -- | Generate a random sentence.
 --
