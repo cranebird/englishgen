@@ -3,7 +3,7 @@
 -- Generate a random sentence.
 -- Copyright (C) 2013 by @quasicrane (Twitter)
 ----------------------------------------------------------------
--- | Generate a radom sentence.
+-- | Generate a random sentence.
 -- See 2.2 A Straightforward solution in PAIP (Paradigms of Artificial Intelligence Programming).
 
 module EnglishGen where
