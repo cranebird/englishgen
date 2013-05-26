@@ -55,5 +55,3 @@ noun = elements ["man", "ball", "woman", "table"]
 -- >>> sample' verb
 -- ["took","hit","took","liked","took","saw","saw","liked","took","hit","saw"]
 verb = elements ["hit", "took", "saw", "liked"]
-
-
