@@ -1,72 +1,117 @@
 ----------------------------------------------------------------
 -- simple.hs - QuickCheck Example
 -- Generate a random sentence.
--- Copyright (C) 2013 by @quasicrane (Twitter)
+-- Copyright (C) 2013 by @quasicrane
 ----------------------------------------------------------------
 -- | Generate a random sentence.
 -- See 2.3 A Rule-Based Solution in PAIP (Paradigms of Artificial Intelligence Programming).
-
 module EnglishGen where
 import Test.QuickCheck
 import Control.Monad
+import Data.Tree
 
-type RuleName = String
-data Rule = Rule [[RuleName]] | Word [String]
-type Grammar = [(RuleName, Rule)]
-type Grammar' = [(RuleName, Gen String)]
+data Rule = Empty | Rule String [Rule] | Word String [String] | Cat Rule Rule
+            deriving (Eq, Show)
 
+-- -- FIXME
+-- instance Show Rule where
+--     show (Empty) = "()"
+--     show (Rule x rs) = x ++ " -> " ++ show rs
+--     show (Word x ws) = x ++ " -> " ++ show ws
+--     show (Cat (Rule x _) (Rule y _)) = x ++ " + " ++ y
+--     show (Cat (Rule x _) (Word y _)) = x ++ " + " ++ y
+--     show (Cat (Word x _) (Rule y _)) = x ++ " + " ++ y
+--     show (Cat (Word x _) (Word y _)) = x ++ " + " ++ y
+--     show (Cat r1 r2) = "..."
+type Grammar = [Rule]
+
+-- Utility
 -- | Concatenate strings.
 cat "" "" = ""
 cat x "" = x
 cat "" y = y
 cat x y = x ++ " " ++ y
 
--- | Combine two Gen String.
-(.+) :: Gen String -> Gen String -> Gen String
-a .+ b = liftM2 cat a b
+simpleGrammar = [ noun, verb, article, nounPhrase, verbPhrase, sentence ] :: Grammar
+    where
+      sentence = Rule "sentence" [nounPhrase `Cat` verbPhrase]
+      noun = Word "noun" ["man", "ball", "woman", "table"]
+      verb = Word "verb" ["hit", "took", "saw", "liked"]
+      article = Word "article" ["the", "a"]
+      nounPhrase = Rule "noun-phrase" [article `Cat` noun]
+      verbPhrase = Rule "verb-phrase" [verb `Cat` nounPhrase]
+    
 
-rewrites :: Grammar -> String -> Rule
-rewrites grm phrase = 
-    case lookup phrase grm of
-      Just r -> r
-      Nothing -> error $ "phrase not found: " ++ phrase
+bigGrammar = [ sentence, nounPhrase, verbPhrase, ppStar, adjStar,
+               pp, prep, adj, article, name, noun, verb, pronoun ] :: Grammar
+    where
+      sentence = Rule "sentence" [nounPhrase `Cat` verbPhrase]
+      nounPhrase = Rule "noun-phrase" [article `Cat` adjStar `Cat` noun `Cat` ppStar, name, pronoun]
+      verbPhrase = Rule "verb-phrase" [verb `Cat` nounPhrase `Cat` ppStar]
+      ppStar = Rule "pp*" [Empty, pp `Cat` ppStar]
+      adjStar = Rule "adj*" [Empty, adj `Cat` adjStar]
+      pp = Rule "pp" [prep `Cat` nounPhrase]
+      prep = Word "prep" ["to", "in", "by", "with", "on"]
+      adj = Word "adj" ["big", "little", "blue", "green", "adiabatic"]
+      article = Word "article" ["the", "a"]
+      name = Word "name" ["Pat", "Kim", "Lee", "Terry", "Robin"]
+      noun = Word "noun" ["man", "ball", "woman", "table"]
+      verb = Word "verb" ["hit", "took", "saw", "liked"]
+      pronoun = Word "pronoun" ["he", "she", "it", "these", "those", "that"]
 
--- FIXME listp は使えない。型が合わない。
--- generate :: Grammar -> [String] -> Gen String
--- generate grm xs = foldr (.+) (return "") (map (generate grm) xs)
+lookupRule :: String -> Grammar -> Rule
+lookupRule x [] = error ("fail to lookupRule: " ++ x)
+lookupRule x (r:rs) = case r of
+                        Rule y _ -> if x == y then
+                                        r
+                                    else
+                                        lookupRule x rs
+                        Word y _ -> if x == y then
+                                        r
+                                    else
+                                        lookupRule x rs
+                        _ -> lookupRule x rs
 
-mkgen :: Grammar -> String -> Gen String
-mkgen grm phrase = mkgen' grm phrase (rewrites grm phrase)
+-- | Generate a random sentence.
+--
+-- >>> sample' $ generate simpleGrammar "sentence"
+-- ["a table took the table","the ball saw a table","a woman took the woman","the man saw a ball","a ball liked a woman","a woman hit the ball","a ball liked the ball","the man hit a man","the woman saw the woman","the ball saw a ball","a woman liked the man"]
+generate :: Grammar -> String -> Gen String
+generate rs phrase = mkGen $ lookupRule phrase rs
 
-mkgen' grm _ (Word ws) = elements ws
-mkgen' grm x (Rule rs) = oneof $ map (rule2gen grm x) rs
+mkGen :: Rule -> Gen String
+mkGen (Rule x rs) = oneof (map mkGen rs)
+mkGen (Word x ws) = elements ws
+mkGen Empty = return ""
+mkGen (Cat r1 r2) =
+    do
+      s1 <- mkGen r1
+      s2 <- mkGen r2
+      return $ cat s1 s2
 
-rule2gen :: Grammar -> String -> [String] -> Gen String
-rule2gen grm x [] = return ""
-rule2gen grm x (r:rs) = mkgen grm r .+ rule2gen grm x rs
+-- Data.Tree Version
+-- | Generate a random sentence as Tree.
+generateTree :: Grammar -> String -> Gen (Forest String)
+generateTree rs phrase = mkGenTree $ lookupRule phrase rs
 
-simpleGrammar = [ ("sentence", Rule [["noun-phrase", "verb-phrase"]]),
-                  ("article", Word ["the", "a"]),
-                  ("noun", Word ["man", "ball", "woman", "table"]),
-                  ("verb", Word ["hit", "took", "saw", "liked"] ),
-                  ("noun-phrase", Rule [["article", "noun"]]),
-                  ("verb-phrase", Rule [["verb", "noun-phrase"]])
-                ]  :: Grammar
+mkGenTree :: Rule -> Gen (Forest String)
+mkGenTree (Rule x rs) = 
+    do
+      t <- oneof (map mkGenTree rs)
+      return [Node x t]
 
-bigGrammar = [ ("sentence", Rule [["noun-phrase", "verb-phrase"]]),
-               ("noun-phrase", Rule [["article", "adj*", "noun", "pp*"],
-                                     ["name"],
-                                     ["pronoun"]]),
-               ("verb-phrase", Rule [["verb", "noun-phrase", "pp*"]]),
-               ("pp*", Rule [[], ["pp", "pp*"]]),
-               ("adj*", Rule [[], ["adj", "adj*"]]),
-               ("pp", Rule [["prep", "noun-phrase"]]),
-               ("prep", Word ["to", "in", "by", "with", "on"]),
-               ("adj", Word ["big", "little", "blue", "green", "adiabatic"]),
-               ("article", Word ["the", "a"]),
-               ("name", Word ["Pat", "Kim", "Lee", "Terry", "Robin"]),
-               ("noun", Word ["man", "ball", "woman", "table"]),
-               ("verb", Word ["hit", "took", "saw", "liked"]),
-               ("pronoun", Word ["he", "she", "it", "these", "those", "that"]) ] :: Grammar
+mkGenTree (Word x ws) =
+    do
+      a <- elements ws
+      return [ Node x [Node a []]]
+mkGenTree Empty = return [Node "" []]
+mkGenTree (Cat r1 r2) =
+    do
+      t1 <- mkGenTree r1
+      t2 <- mkGenTree r2
+      return $ t1 ++ t2
 
-
+-- | Draw a Sentence Parse Tree
+draw rs phrase = do
+  ts <- sample' $ generateTree rs phrase
+  putStrLn (drawForest (head ts))
