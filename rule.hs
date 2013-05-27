@@ -13,16 +13,6 @@ import Data.Tree
 data Rule = Empty | Rule String [Rule] | Word String [String] | Cat Rule Rule
             deriving (Eq, Show)
 
--- -- FIXME
--- instance Show Rule where
---     show (Empty) = "()"
---     show (Rule x rs) = x ++ " -> " ++ show rs
---     show (Word x ws) = x ++ " -> " ++ show ws
---     show (Cat (Rule x _) (Rule y _)) = x ++ " + " ++ y
---     show (Cat (Rule x _) (Word y _)) = x ++ " + " ++ y
---     show (Cat (Word x _) (Rule y _)) = x ++ " + " ++ y
---     show (Cat (Word x _) (Word y _)) = x ++ " + " ++ y
---     show (Cat r1 r2) = "..."
 type Grammar = [Rule]
 
 -- Utility
@@ -40,7 +30,6 @@ simpleGrammar = [ noun, verb, article, nounPhrase, verbPhrase, sentence ] :: Gra
       article = Word "article" ["the", "a"]
       nounPhrase = Rule "noun-phrase" [article `Cat` noun]
       verbPhrase = Rule "verb-phrase" [verb `Cat` nounPhrase]
-    
 
 bigGrammar = [ sentence, nounPhrase, verbPhrase, ppStar, adjStar,
                pp, prep, adj, article, name, noun, verb, pronoun ] :: Grammar
@@ -113,6 +102,41 @@ mkGenTree (Cat r1 r2) =
       return $ t1 ++ t2
 
 -- | Draw a Sentence Parse Tree
+--
+-- >>> draw simpleGrammar "noun-phrase"
+-- noun-phrase
+-- |
+-- +- article
+-- |  |
+-- |  `- the
+-- |
+-- `- noun
+--    |
+--    `- table
+-- >>> draw bigGrammar "sentence"
+-- sentence
+-- |
+-- +- noun-phrase
+-- |  |
+-- |  `- name
+-- |     |
+-- |     `- Kim
+-- |
+-- `- verb-phrase
+--    |
+--    +- verb
+--    |  |
+--    |  `- liked
+--    |
+--    +- noun-phrase
+--    |  |
+--    |  `- pronoun
+--    |     |
+--    |     `- that
+--    |
+--    `- pp*
+--       |
+--       `- 
 draw rs phrase = do
   ts <- sample' $ generateTree rs phrase
   putStrLn (drawForest (head ts))
