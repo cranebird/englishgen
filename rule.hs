@@ -59,6 +59,7 @@ bigGrammar = [ sentence, nounPhrase, verbPhrase, ppStar, adjStar,
       verb = Word "verb" ["hit", "took", "saw", "liked"]
       pronoun = Word "pronoun" ["he", "she", "it", "these", "those", "that"]
 
+-- | Lookup Rule in Grammar.
 lookupRule :: String -> Grammar -> Rule
 lookupRule x [] = error ("fail to lookupRule: " ++ x)
 lookupRule x (r:rs) = case r of
@@ -90,7 +91,7 @@ mkGen (Cat r1 r2) =
       return $ cat s1 s2
 
 -- Data.Tree Version
--- | Generate a random sentence as Tree.
+-- | Generate a random sentence with a complete parse tree.
 generateTree :: Grammar -> String -> Gen (Forest String)
 generateTree rs phrase = mkGenTree $ lookupRule phrase rs
 
