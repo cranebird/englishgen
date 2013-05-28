@@ -10,7 +10,7 @@ import Test.QuickCheck
 import Control.Monad
 import Data.Tree
 
-data Rule = Empty | Rule String [Rule] | Word String [String] | Cat Rule Rule
+data Rule = Empty | Rule String [Rule] | Word String [String] | Rule :+ Rule
             deriving (Eq, Show)
 
 type Grammar = [Rule]
@@ -24,22 +24,22 @@ cat x y = x ++ " " ++ y
 
 simpleGrammar = [ noun, verb, article, nounPhrase, verbPhrase, sentence ] :: Grammar
     where
-      sentence = Rule "sentence" [nounPhrase `Cat` verbPhrase]
+      sentence = Rule "sentence" [nounPhrase :+ verbPhrase]
       noun = Word "noun" ["man", "ball", "woman", "table"]
       verb = Word "verb" ["hit", "took", "saw", "liked"]
       article = Word "article" ["the", "a"]
-      nounPhrase = Rule "noun-phrase" [article `Cat` noun]
-      verbPhrase = Rule "verb-phrase" [verb `Cat` nounPhrase]
+      nounPhrase = Rule "noun-phrase" [article :+ noun]
+      verbPhrase = Rule "verb-phrase" [verb :+ nounPhrase]
 
 bigGrammar = [ sentence, nounPhrase, verbPhrase, ppStar, adjStar,
                pp, prep, adj, article, name, noun, verb, pronoun ] :: Grammar
     where
-      sentence = Rule "sentence" [nounPhrase `Cat` verbPhrase]
-      nounPhrase = Rule "noun-phrase" [article `Cat` adjStar `Cat` noun `Cat` ppStar, name, pronoun]
-      verbPhrase = Rule "verb-phrase" [verb `Cat` nounPhrase `Cat` ppStar]
-      ppStar = Rule "pp*" [Empty, pp `Cat` ppStar]
-      adjStar = Rule "adj*" [Empty, adj `Cat` adjStar]
-      pp = Rule "pp" [prep `Cat` nounPhrase]
+      sentence = Rule "sentence" [nounPhrase :+ verbPhrase]
+      nounPhrase = Rule "noun-phrase" [article :+ adjStar :+ noun :+ ppStar, name, pronoun]
+      verbPhrase = Rule "verb-phrase" [verb :+ nounPhrase :+ ppStar]
+      ppStar = Rule "pp*" [Empty, pp :+ ppStar]
+      adjStar = Rule "adj*" [Empty, adj :+ adjStar]
+      pp = Rule "pp" [prep :+ nounPhrase]
       prep = Word "prep" ["to", "in", "by", "with", "on"]
       adj = Word "adj" ["big", "little", "blue", "green", "adiabatic"]
       article = Word "article" ["the", "a"]
@@ -48,19 +48,44 @@ bigGrammar = [ sentence, nounPhrase, verbPhrase, ppStar, adjStar,
       verb = Word "verb" ["hit", "took", "saw", "liked"]
       pronoun = Word "pronoun" ["he", "she", "it", "these", "those", "that"]
 
+lambdaGrammar = [ exp ] :: Grammar
+    where
+      var = Word "var" ["x", "y", "z"]
+      hat = Word "lambda" ["^"]
+      dot = Word "lambda" ["."]
+      l = Word "lparen" ["("]
+      r = Word "rparen" [")"]
+      abs = Rule "abs" [hat :+ var :+ dot :+ exp]
+      app = Rule "app" [l :+ exp :+ exp :+ r]
+      exp = Rule "exp" [var, abs, app]
+
+lispGrammar = [ exp ] :: Grammar
+    where
+      var = Word "var" [ "x", "y", "z" ]
+      sym = Word "sym" [ "+", "-", "*", "/" ]
+      letsym = Word "letsym" ["let", "let*", "letrec"]
+      l = Word "lparen" [ "(" ]
+      r = Word "rparen" [ ")" ]
+      fn = Rule "fn" [l :+ sym :+ var :+ exp :+ r]
+      bind = Rule "bind" [l :+ var :+ fn :+ r]
+      bindStar= Rule "bind*" [Empty, bind :+ bindStar]
+      letexp = Rule "letexp" [l :+ letsym :+ l :+ bindStar :+ r :+ var :+ r]
+      exp = Rule "exp" [var, letexp, fn]
+
 -- | Lookup Rule in Grammar.
 lookupRule :: String -> Grammar -> Rule
 lookupRule x [] = error ("fail to lookupRule: " ++ x)
-lookupRule x (r:rs) = case r of
-                        Rule y _ -> if x == y then
-                                        r
-                                    else
-                                        lookupRule x rs
-                        Word y _ -> if x == y then
-                                        r
-                                    else
-                                        lookupRule x rs
-                        _ -> lookupRule x rs
+lookupRule x (r:rs) =
+    case r of
+      Rule y _ -> if x == y then
+                      r
+                  else
+                      lookupRule x rs
+      Word y _ -> if x == y then
+                      r
+                  else
+                      lookupRule x rs
+      _ -> lookupRule x rs
 
 -- | Generate a random sentence.
 --
@@ -73,11 +98,28 @@ mkGen :: Rule -> Gen String
 mkGen (Rule x rs) = oneof (map mkGen rs)
 mkGen (Word x ws) = elements ws
 mkGen Empty = return ""
-mkGen (Cat r1 r2) =
+mkGen (r1 :+ r2) =
     do
       s1 <- mkGen r1
       s2 <- mkGen r2
       return $ cat s1 s2
+
+-- | Generate a list of all possible expansions of this phrase.
+--
+-- >>> generateAll simpleGrammar "noun"
+-- ["man","ball","woman","table"]
+-- >>> generateAll simpleGrammar "noun-phrase"
+-- ["the man","the ball","the woman","the table","a man","a ball","a woman","a table"]
+-- >>> length $ generateAll simpleGrammar "sentence"
+-- 256
+generateAll :: Grammar -> String -> [String]
+generateAll rs phrase = mkAll $ lookupRule phrase rs
+
+mkAll :: Rule -> [String]
+mkAll (Rule x rs) = concatMap mkAll rs  
+mkAll (Word x ws) = ws
+mkAll Empty = []
+mkAll (r1 :+ r2) = [ cat s1 s2 | s1 <- mkAll r1, s2 <- mkAll r2]
 
 -- Data.Tree Version
 -- | Generate a random sentence with a complete parse tree.
@@ -94,8 +136,9 @@ mkGenTree (Word x ws) =
     do
       a <- elements ws
       return [ Node x [Node a []]]
-mkGenTree Empty = return [Node "" []]
-mkGenTree (Cat r1 r2) =
+
+mkGenTree Empty = return []
+mkGenTree (r1 :+ r2) =
     do
       t1 <- mkGenTree r1
       t2 <- mkGenTree r2
@@ -140,3 +183,4 @@ mkGenTree (Cat r1 r2) =
 draw rs phrase = do
   ts <- sample' $ generateTree rs phrase
   putStrLn (drawForest (head ts))
+
